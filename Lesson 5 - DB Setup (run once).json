@@ -1,0 +1,65 @@
+{
+  "name": "Lesson 5 - DB Setup (run once)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "49fd126a-6a5a-4a05-b5e8-ffb91e2d0e64",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "CREATE TABLE IF NOT EXISTS customers (\n  id    SERIAL PRIMARY KEY,\n  email TEXT NOT NULL UNIQUE,\n  name  TEXT\n);\n\nCREATE TABLE IF NOT EXISTS order_leads (\n  id             SERIAL PRIMARY KEY,\n  customer_email TEXT NOT NULL REFERENCES customers(email),\n  customer_name  TEXT,\n  product        TEXT,\n  amount         NUMERIC(10,2),\n  lead_status    TEXT NOT NULL DEFAULT 'pending'\n);\n\nINSERT INTO customers (email, name)\nVALUES\n  ('ada@example.com',   'Ada L.'),\n  ('grace@example.com', 'Grace H.')\nON CONFLICT (email) DO NOTHING;\n\nINSERT INTO order_leads (customer_email, customer_name, product, amount, lead_status)\nVALUES\n  ('ada@example.com',   'Ada Lovelace', 'Pro Plan',  149.00, 'pending'),\n  ('grace@example.com', 'Grace Hopper', 'Team Plan', 399.00, 'pending');",
+        "options": {
+          "queryBatching": "transaction"
+        }
+      },
+      "id": "619938e0-8181-400a-aa07-7906c486fd23",
+      "name": "SQL_CreateSchemaAndSeed",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        224,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "NxoTycunkgjzK2cK",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "SQL_CreateSchemaAndSeed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "61949b58-66c2-45c3-96ee-7811266e710a",
+  "meta": {
+    "instanceId": "201381d913fa9e78389f7093cb99cedc70c766251a500f897db19feccfda3bd0"
+  },
+  "nodeGroups": [],
+  "id": "Jel99TUcFL3VAUpx",
+  "tags": []
+}

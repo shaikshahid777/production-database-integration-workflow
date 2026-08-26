@@ -1,0 +1,184 @@
+{
+  "name": "Lesson 5 - Order Lead DB Integration",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "4eab7e78-d747-42d6-8bb7-ac6a49f4da86",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH next_lead AS (\n  SELECT id\n  FROM order_leads\n  WHERE lead_status = 'pending'\n  ORDER BY id\n  FOR UPDATE SKIP LOCKED\n  LIMIT 1\n)\nUPDATE order_leads o\nSET lead_status = 'processing'\nFROM next_lead\nWHERE o.id = next_lead.id\nRETURNING o.*;",
+        "options": {
+          "queryBatching": "transaction"
+        }
+      },
+      "id": "2a8dc330-3040-4ee3-bdf0-9e9c5f0d4127",
+      "name": "SQL_FetchAndLockRow",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        224,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "NxoTycunkgjzK2cK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Apply order business logic here (fulfilment, scoring, enrichment, etc.).\n// We keep the claimed lead's fields and attach a processing result so the\n// downstream SQL nodes have everything they need.\nconst lead = $json;\nreturn {\n  json: {\n    ...lead,\n    processed_at: new Date().toISOString(),\n    processing_result: 'ok',\n  },\n};"
+      },
+      "id": "4423a1fe-3b61-4536-a511-201249cc6d97",
+      "name": "ACTION_ProcessOrder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE order_leads\nSET lead_status = 'completed'\nWHERE id = $1\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ $json.id }}"
+        }
+      },
+      "id": "23c8bec6-12cf-4903-be5d-dd175a14aaf1",
+      "name": "SQL_UpdateStatusCompleted",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        672,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "NxoTycunkgjzK2cK",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO customers (email, name)\nVALUES ($1, $2)\nON CONFLICT (email)\nDO UPDATE SET name = EXCLUDED.name\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ $json.customer_email }}, {{ $json.customer_name }}"
+        }
+      },
+      "id": "7d0a25a0-2305-4db1-a4c7-565eb8f03b0c",
+      "name": "SQL_UpsertCustomer",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        896,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "NxoTycunkgjzK2cK",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "SQL_FetchAndLockRow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL_FetchAndLockRow": {
+      "main": [
+        [
+          {
+            "node": "ACTION_ProcessOrder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ACTION_ProcessOrder": {
+      "main": [
+        [
+          {
+            "node": "SQL_UpdateStatusCompleted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL_UpdateStatusCompleted": {
+      "main": [
+        [
+          {
+            "node": "SQL_UpsertCustomer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "2b5dd261-9ffc-4af5-a087-1521a91b835c",
+  "meta": {
+    "instanceId": "201381d913fa9e78389f7093cb99cedc70c766251a500f897db19feccfda3bd0"
+  },
+  "nodeGroups": [
+    {
+      "id": "28a48391-b4ec-4779-9034-11039d904508",
+      "name": "Ingest & Lock",
+      "nodeIds": [
+        "2a8dc330-3040-4ee3-bdf0-9e9c5f0d4127"
+      ],
+      "description": "Atomically claim one pending order lead using FOR UPDATE SKIP LOCKED and mark it processing so concurrent runs never double-process a row."
+    },
+    {
+      "id": "a21b2db6-4efb-436b-81d1-4423229ae67d",
+      "name": "Process",
+      "nodeIds": [
+        "4423a1fe-3b61-4536-a511-201249cc6d97"
+      ],
+      "description": "Run the order business logic on the claimed lead."
+    },
+    {
+      "id": "95f31be6-3618-4fa2-9106-febc08a5fe35",
+      "name": "Persist",
+      "nodeIds": [
+        "23c8bec6-12cf-4903-be5d-dd175a14aaf1",
+        "7d0a25a0-2305-4db1-a4c7-565eb8f03b0c"
+      ],
+      "description": "Mark the lead completed and upsert the customer by unique email (insert new / update name on conflict)."
+    }
+  ],
+  "id": "ywb3A0H4IvYBh2CG",
+  "tags": []
+}
